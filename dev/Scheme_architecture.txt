@@ -1,0 +1,44 @@
+
+[Layer 1] => Kernel
+[Layer 2] => IPC & Syncronization
+[Layer 3] => Protection & Safety
+[Layer 4] => Power management & Driver
+
+// i nomi sono bozze e non saranno quelli reali probabilmente
+
+/MyRTOS_Project
+│
+├── /rtos
+│   ├── /inc
+│   │   ├── os_kernel.h     // [Layer 1] Definizioni TCB, Scheduler e API Task
+│   │   ├── os_time.h       // [Layer 1] Gestione System Tick e Delay Resolution
+│   │   ├── os_sync.h       // [Layer 2] API Semafori, Mutex e Event Flags
+│   │   ├── os_fifo.h       // [Layer 2] Strutture dati per Message Queues
+│   │   ├── os_mpu.h        // [Layer 3] Definizioni regioni e permessi MPU
+│   │   └── os_types.h      // [Layer 1] Tipi primitivi (os_status_t, os_priority_t)
+│   │
+│   ├── /src
+│   │   ├── os_kernel.c     // [Layer 1] Algoritmo di Scheduling (Round Robin/Priority)
+│   │   ├── os_time.c       // [Layer 1] Logica aggiornamento Sleep Queue e Ticks
+│   │   ├── os_sync.c       // [Layer 2] Logica di Sincronizzazione (Wait/Post)
+│   │   └── os_fifo.c       // [Layer 2] Implementazione code circolari thread-safe
+│   │
+│   └── /port               // PORTING SPECIFICO PER RP2350 (ARM CORTEX-M33)
+│       ├── os_port.h       // [Layer 1] Macro per sezioni critiche (CPSID/CPSIE)
+│       ├── os_port.c       // [Layer 1] Hardware-init: SysTick e Stack Mocking
+│       ├── os_port_asm.s   // [Layer 1] PendSV_Handler (Context Switching manuale)
+│       ├── os_svc.s        // [Layer 3] SVC_Handler (System Calls entry point)
+│       ├── os_mpu.c        // [Layer 3] Configurazione registri MPU HW
+│       └── os_pwr.c        // [Layer 4] Low power management (Tickless mode)
+│
+├── /drivers                // [Layer 4] BOARD SUPPORT PACKAGE (BSP)
+│   ├── bsp_uart.c          // Driver UART (per Console Debug e Logging)
+│   ├── bsp_gpio.c          // Driver GPIO (Controllo hardware diretto)
+│   └── bsp_timer.c         // Driver Timer hardware per misure ad alta precisione
+│
+├── /tests                  // Validazione funzionale
+│   └── test_scheduler.c    // Test di stress per verificare il determinismo
+│
+├── main.c                  // Definizione Task utente e Kernel Start
+├── CMakeLists.txt          // Configurazione Build System (Integrazione Pico SDK)
+└── pico_sdk_import.cmake   // Script di importazione per l'ambiente Raspberry Pi
