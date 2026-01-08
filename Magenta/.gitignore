@@ -1,0 +1,54 @@
+# --- Binari e Output della Compilazione ---
+# Escludiamo tutti i file generati dal compilatore
+*.o
+*.obj
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+*.dis
+
+# --- Cartelle di Build ---
+# Solitamente CMake o i Makefile creano una cartella dedicata
+build/
+bin/
+obj/
+
+# --- File di Progetto IDE (specifici dell'utente) ---
+# Visual Studio Code
+.vscode/
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# CLion / JetBrains
+.idea/
+cmake-build-*/
+**/build/
+
+# Keil / IAR / STM32CubeIDE
+*.uvoptx
+*.uvprojx
+*.mxproject
+.settings/
+.project
+.cproject
+
+# --- File di Log e Temporanei ---
+*.log
+*.tmp
+*.swp
+.DS_Store
+
+# --- Dati Sensibili / Locali ---
+# Se in futuro userai chiavi per il Secure Boot (comuni su RP2350)
+*.pem
+*.key
+*.priv
+
+# File generati da CMake che contengono path del tuo PC
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+Makefile
