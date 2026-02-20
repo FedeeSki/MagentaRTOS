@@ -2,6 +2,9 @@
 
 Preemptive Real-Time Operating System (RTOS) engineered for the **Raspberry Pi Pico 2 (RP2350)** with native ARM Cortex-M33 support.
 
+<img src="https://docs.sunfounder.com/projects/pico-2w-kit/en/latest/_images/pin_pic3.png" alt="Pi Pico 2" width="50%"/>
+
+
 ## Roadmap
 
 ![Layer 1](https://img.shields.io/badge/Layer_1%3A_Kernel-READY-brightgreen?style=for-the-badge)  
