@@ -4,6 +4,8 @@ cmake_minimum_required(VERSION 3.13)
 set(PICO_BOARD pico2_w)
 set(PICO_PLATFORM rp2350)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Force the correct CPU, FPU, and ABI flags globally.
 # This is a "bigger hammer" to ensure the linker gets the right settings,
 # as target-specific properties were not working.
