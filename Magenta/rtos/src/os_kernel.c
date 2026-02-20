@@ -1,7 +1,8 @@
 #include "os_kernel.h"
 #include <stddef.h>
+#include <stdio.h>
 
-/* --- Definizioni Bare Metal per la gestione interrupt --- */
+/* Interrupt management helpers */
 static inline void __disable_irq(void) {
     __asm volatile ("CPSID I" : : : "memory");
 }
@@ -10,38 +11,40 @@ static inline void __enable_irq(void) {
     __asm volatile ("CPSIE I" : : : "memory");
 }
 
-/* Puntatore al task che sta girando */
+/* Global kernel state */
 os_tcb_t *currentTCB = NULL;
+static uint32_t next_task_id = 0;
 
-
-/* Stack per il task Idle (dimensione minima) */
+/* Idle task resources */
 #define IDLE_STACK_SIZE 256
 static os_stack_t idle_stack[IDLE_STACK_SIZE];
 static os_tcb_t idleTCB;
 
-/* Funzione del task Idle: un ciclo infinito che non fa nulla */
+/* The idle task runs when no other task is ready */
 void OS_IdleTask(void) {
     while(1) {
-        // Opzionale: istruzione per risparmiare energia
-        __asm("WFI"); //Wait for interrupt
+        /* Wait for interrupt to save power */
+        __asm("WFI");
     }
 }
 
+/* Initialize kernel and create the idle task */
 void OS_Init(void) {
+    printf("[KERNEL] Initializing OS...\n");
     currentTCB = NULL;
-    
-    // Creiamo il task Idle che sarà sempre presente nella lista
+    next_task_id = 0;
+
     OS_TaskCreate(&idleTCB, OS_IdleTask, idle_stack, IDLE_STACK_SIZE);
+    printf("[KERNEL] Idle Task created.\n");
 }
 
-
+/* Simple round-robin scheduler */
 void OS_Scheduler(void) {
-    // Partiamo dal task successivo a quello attuale
+    if (currentTCB == NULL) return;
+
     os_tcb_t *nextTCB = currentTCB->next;
 
-    /* Cerchiamo il prossimo task che sia in stato READY.
-       Grazie all'Idle Task creato in OS_Init, troveremo SEMPRE 
-       almeno un task pronto (l'Idle Task stesso). */
+    /* Find next ready task */
     while (nextTCB->state != TASK_STATE_READY) {
         nextTCB = nextTCB->next;
     }
@@ -49,32 +52,31 @@ void OS_Scheduler(void) {
     currentTCB = nextTCB;
 }
 
-
-
-
+/* Porting functions defined in os_port.c */
 extern os_stack_t* OS_Port_StackInit(void (*task_func)(void), os_stack_t *stack_top);
+extern void OS_Port_InitTick(uint32_t tick_ms);
+extern void OS_Port_EnableFPU(void);
 
+/* Create a new task and add it to the circular list */
 os_status_t OS_TaskCreate(os_tcb_t *tcb, void (*task_func)(void), os_stack_t *stack_base, uint32_t stack_size) {
-    // 1. Controllo parametri
     if (tcb == NULL || task_func == NULL || stack_base == NULL || stack_size == 0) {
         return OS_ERR_PARAM;
     }
 
-    // 2. Calcolo stack_top con allineamento preventivo
-    // Sommiamo stack_size e poi forziamo l'allineamento a 8 byte verso il basso
+    /* Align stack to 8 bytes */
     uintptr_t top_address = (uintptr_t)stack_base + (stack_size * sizeof(os_stack_t));
     os_stack_t *stack_top = (os_stack_t *)(top_address & ~0x7);
 
-    // 3. Inizializzazione fisica dello stack
+    /* Initialize stack frame */
     tcb->stackPtr = OS_Port_StackInit(task_func, stack_top);
-    
     tcb->state = TASK_STATE_READY;
     tcb->sleep_ticks = 0;
-    tcb->task_id = 0;
+    tcb->task_id = next_task_id++;
 
-    // 4. Inserimento nella lista circolare (Sezione Critica Protetta)
-   __disable_irq(); // Disabilita interrupt
+    printf("[KERNEL] Created Task %lu (Func: %p, SP: %p)\n", tcb->task_id, task_func, tcb->stackPtr);
 
+    /* Insert into circular list */
+    __disable_irq();
     if (currentTCB == NULL) {
         currentTCB = tcb;
         tcb->next = tcb;
@@ -82,52 +84,33 @@ os_status_t OS_TaskCreate(os_tcb_t *tcb, void (*task_func)(void), os_stack_t *st
         tcb->next = currentTCB->next;
         currentTCB->next = tcb;
     }
-
-    __enable_irq(); // Riabilita interrupt
+    __enable_irq();
 
     return OS_OK;
 }
 
+/* Start the OS and switch to the first task */
+void OS_Start(void) {
+    printf("[KERNEL] OS_Start: Configuring hardware and launching first task...\n");
+    
+    /* Enable FPU */
+    OS_Port_EnableFPU();
 
-extern void OS_Launch_First_Task(os_tcb_t **tcb_ptr);
+    /* Prepare hardware tick */
+    OS_Port_InitTick(1);
 
-extern void OS_Port_InitTick(uint32_t tick_ms);
-
-os_status_t OS_Start(void) {
-    // 1. Controllo di sicurezza: abbiamo almeno un task?
-    if (currentTCB == NULL) {
-        return OS_ERR_PARAM;
-    }
-
-    // 2. Disabilita gli interrupt globali durante la fase di avvio
+    /* Final setup with interrupts disabled */
     __disable_irq();
 
-    // 3. Inizializza il System Tick (es. 1ms) 
-    // Questa funzione è definita nel tuo os_port.c
-    OS_Port_InitTick(1); 
+    /* Set PSP to 0 signals PendSV to skip save */
+    __asm volatile ("msr psp, %0" : : "r" (0));
 
-    /* * 4. Lancio del primo task.
-     * Invece di provare a saltare al PC manualmente in C (che è rischioso),
-     * chiamiamo la funzione Assembly che hai scritto in os_port_asm.s.
-     * * Passiamo l'indirizzo di currentTCB.
-     */
-    OS_Launch_First_Task(&currentTCB);
+    /* Trigger PendSV */
+    *((volatile uint32_t *)0xE000ED04) = (1UL << 28);
 
-    /* * Non arriveremo mai qui. 
-     * OS_Launch_First_Task cambia lo stack e salta alla funzione del task.
-     */
-    return OS_OK; 
+    /* Enable interrupts to trigger the switch */
+    __enable_irq();
+    
+    /* We should never reach this line as the stack pointer changes to Task 1 */
+    while(1);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

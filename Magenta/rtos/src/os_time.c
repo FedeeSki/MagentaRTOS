@@ -1,47 +1,39 @@
 #include "os_kernel.h"
 
-/* Importiamo le macro e le variabili globali necessarie */
+#define SCB_ICSR            (*((volatile uint32_t *)0xE000ED04))
+#define SCB_ICSR_PENDSVSET_BIT  (1UL << 28)
+
 extern os_tcb_t *currentTCB;
 
-/* Definiamo l'indirizzo per prenotare il PendSV (come nel tuo os_port.c) */
-#define INT_CTRL_STATE      (*((volatile uint32_t *)0xE000ED04))
-#define PENDSVSET           (1 << 28)
-
-/**
- * Mette il task attuale in pausa.
- */
+/* Put the current task to sleep for a number of ticks */
 void OS_Delay(uint32_t ticks) {
     if (ticks == 0) return;
 
-    /* Entriamo in sezione critica per evitare che un interrupt modifichi lo stato ora */
-    __asm("CPSID I"); 
+    /* Disable interrupts for TCB modification */
+    __asm("CPSID I");
 
     currentTCB->sleep_ticks = ticks;
     currentTCB->state = TASK_STATE_BLOCKED;
 
-    /* Usciamo dalla sezione critica */
     __asm("CPSIE I");
 
-    /* Prenotiamo il PendSV usando la tua macro per cambiare task immediatamente.
-       Non ha senso continuare l'esecuzione se il task è appena stato bloccato. */
-    INT_CTRL_STATE = PENDSVSET;
+    /* Trigger context switch */
+    SCB_ICSR = SCB_ICSR_PENDSVSET_BIT;
 }
 
-/**
- * Aggiorna i contatori. Viene chiamata dal SysTick.
- */
+/* Update sleep timers for all blocked tasks */
 void OS_Time_Update(void) {
     os_tcb_t *temp = currentTCB;
     if (temp == NULL) return;
 
-    /* Scorriamo la lista circolare dei task */
+    /* Traverse circular list */
     do {
         if (temp->state == TASK_STATE_BLOCKED) {
             if (temp->sleep_ticks > 0) {
                 temp->sleep_ticks--;
             }
-            
-            /* Se il tempo è scaduto, il task torna pronto */
+
+            /* Wake up task if timer expired */
             if (temp->sleep_ticks == 0) {
                 temp->state = TASK_STATE_READY;
             }
