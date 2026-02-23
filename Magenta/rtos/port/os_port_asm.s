@@ -37,6 +37,7 @@ isr_pendsv:
     LDR     R1, [R1]        /* R1 = Pointer to the os_tcb_t struct */
     STR     R0, [R1]        /* TCB->stackPtr = R0 */
 
+
 skip_context_save:
     /* 3. Choose the next task (C logic) */
     BL      OS_Scheduler    /* Call the C scheduler to update currentTCB */
@@ -62,8 +63,11 @@ skip_context_save:
     CPSIE   I
     BX      LR              /* Exception return: CPU restores R0-R3, PC, xPSR, and S0-S15 if used */
 
+
 .global OS_Launch_First_Task
 .type OS_Launch_First_Task, %function
+
+
 /*
  * OS_Launch_First_Task: Starts the first task.
  */
