@@ -2,7 +2,7 @@
 #include <stddef.h>
 #include <stdio.h>
 
-/* Interrupt management helpers */
+/* Interrupt management helpers => (Change Processor State, Interrupt Disable)*/
 static inline void __disable_irq(void) {
     __asm volatile ("CPSID I" : : : "memory");
 }
@@ -63,7 +63,13 @@ os_status_t OS_TaskCreate(os_tcb_t *tcb, void (*task_func)(void), os_stack_t *st
         return OS_ERR_PARAM;
     }
 
-    /* Align stack to 8 bytes */
+    /* Align stack to 8 bytes (per difetto)
+    * 
+    *   L'allineamento è la regola per cui un dato deve iniziare
+    *   a un indirizzo di memoria che sia un multiplo della sua
+    *   dimensione (8 byte). (Terminano con 3 zeri)
+    *   "From reading 1 byte, to 4byte each time "
+    */
     uintptr_t top_address = (uintptr_t)stack_base + (stack_size * sizeof(os_stack_t));
     os_stack_t *stack_top = (os_stack_t *)(top_address & ~0x7);
 
