@@ -10,14 +10,14 @@ typedef enum {
     TASK_STATE_BLOCKED
 } os_task_state_t;
 
-/* Task Control Block */
+/* Task Control Block */ 
 typedef struct os_tcb {
-    os_stack_t      *stackPtr; //4byte
+    os_stack_t      *stackPtr; 
     struct os_tcb   *next; 
-    os_priority_t    priority; //1byte
-    os_task_state_t  state;  //enum (3var)
-    uint32_t         task_id; //4
-    uint32_t         sleep_ticks; // 4
+    os_priority_t    priority; 
+    os_task_state_t  state;  
+    uint32_t         task_id; 
+    uint32_t         sleep_ticks; 
 } os_tcb_t;
 
 /* Kernel API */

@@ -23,7 +23,6 @@ static os_tcb_t idleTCB;
 /* The idle task runs when no other task is ready */
 void OS_IdleTask(void) {
     while(1) {
-        /* Wait for interrupt to save power */
         __asm("WFI");
     }
 }

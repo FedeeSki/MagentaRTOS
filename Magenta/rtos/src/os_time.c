@@ -37,6 +37,7 @@ void OS_Delay(uint32_t ticks) {
  * for any task that is in the BLOCKED state. If a counter reaches zero,
  * the task's state is changed back to READY.
  */
+
 void OS_Time_Update(void) {
     // This function is called from an ISR, so we can assume atomicity for now
     // regarding the list traversal, as PendSV has a lower priority.

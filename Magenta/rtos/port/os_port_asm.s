@@ -9,9 +9,10 @@
 
 .section .text
 
-/*
- * isr_pendsv: Context switch handler.
- */
+
+/* isr_pendsv: Context switch handler.  */
+
+
 isr_pendsv:
     /* 1. Disable interrupts for critical section */
     CPSID   I
@@ -29,6 +30,7 @@ isr_pendsv:
 
     /* STMDB: Store Multiple Decrement Before.
        Saves registers R4-R11, R12, and LR onto the task's stack (10 words). */
+
     STMDB   R0!, {R4-R11, R12, LR}
 
 
@@ -68,9 +70,9 @@ skip_context_save:
 .type OS_Launch_First_Task, %function
 
 
-/*
- * OS_Launch_First_Task: Starts the first task.
- */
+
+/* OS_Launch_First_Task: Starts the first task. */
+ 
 OS_Launch_First_Task:
     /* R0 = Address of the currentTCB pointer */
     LDR R0, =currentTCB
