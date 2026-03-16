@@ -1,16 +1,8 @@
 #include "os_kernel.h"
+#include "os_port.h"
 #include "pico/stdlib.h"
 #include "hardware/clocks.h"
 #include <stdio.h>
-
-/* Interrupt management helpers */
-static inline void __disable_irq(void) {
-    __asm volatile ("CPSID I" : : : "memory");
-}
-
-static inline void __enable_irq(void) {
-    __asm volatile ("CPSIE I" : : : "memory");
-}
 
 /* ARM Cortex-M System Control Block and SysTick registers */
 #define SCB_SHPR3           (*((volatile uint32_t *)0xE000ED20))
@@ -26,7 +18,7 @@ static inline void __enable_irq(void) {
 
 /* Handle critical system faults */
 void isr_hard_fault(void) {
-    __disable_irq();
+    OS_ENTER_CRITICAL();
     /* Wait for UART to finish current transmission */
     for(volatile int i=0; i<1000000; i++);
     printf("\n!!! HARD FAULT DETECTED !!!\n");

@@ -7,9 +7,9 @@ Preemptive Real-Time Operating System (RTOS) engineered for the **Raspberry Pi P
 
 ## Roadmap
 
-![Layer 1](https://img.shields.io/badge/Layer_1%3A_Kernel-READY-brightgreen?style=for-the-badge)  
+![Layer 1](https://img.shields.io/badge/Layer_1%3A_Kernel-TESTING-brightgreen?style=for-the-badge)  
 
-![Layer 2](https://img.shields.io/badge/Layer_2%3A_IPC_%26_Synchronization-IN_PROGRESS-magenta?style=for-the-badge)  
+![Layer 2](https://img.shields.io/badge/Layer_2%3A_IPC_%26_Synchronization-WORKING-brightgreen?style=for-the-badge)  
 
 ![Layer 3](https://img.shields.io/badge/Layer_3%3A_Protection_%26_Safety-PLANNED-lightgrey?style=for-the-badge)  
 
@@ -20,10 +20,12 @@ Preemptive Real-Time Operating System (RTOS) engineered for the **Raspberry Pi P
 ## Contents
 1. [Overview](#overview)
 2. [Milestones: Layer 1](#milestone-layer-1-kernel-core)
-3. [Observational Notes](#observational-notes)
-4. [Development Lifecycle](#development-lifecycle)
-5. [Prerequisites](#prerequisites)
-6. [Building & Flashing](#building-flashing)
+3. [Milestones: Layer 2](#milestones-layer-2-ipc--synchronization)
+4. [Observational Notes](#observational-notes)
+5. [Development Lifecycle](#development-lifecycle)
+6. [Prerequisites](#prerequisites)
+7. [Building & Flashing](#building-flashing)
+8. [Serial Monitoring](#serial-monitoring)
 
 ---
 
@@ -47,6 +49,18 @@ MagentaRTOS provides a deterministic execution environment utilizing a preemptiv
 ### Time & Memory
 * **Sleep Queue**: Millisecond-resolution delay resolution via `OS_Delay` API.
 * **Static Allocation**: Task stacks and TCBs are statically allocated for deterministic memory footprints and safety.
+
+## Milestones: Layer 2 (IPC & Synchronization)
+
+### Primitives
+*   **Semaphores**: Binary and Counting Semaphores for task synchronization and resource management.
+*   **Mutexes**: Recursive Mutexes with ownership tracking to protect shared resources and prevent priority inversion (basic implementation).
+*   **Wait Lists**: FIFO (First-In, First-Out) wait queues for tasks blocked on semaphores or mutexes.
+
+### Kernel Enhancements
+*   **Critical Sections**: Standardized `OS_ENTER_CRITICAL()` and `OS_EXIT_CRITICAL()` macros for atomic operations.
+*   **Task State Management**: Refined `BLOCKED` state handling; tasks only unblocked by time if `sleep_ticks > 0`.
+*   **Scheduler Integration**: Immediate context switching via `PendSV` upon task blocking/unblocking for efficient resource contention.
 
 ---
 
@@ -73,14 +87,60 @@ The hardware emits a characteristic high-pitched sound (~1kHz) during the idle c
 
 ## Building & Flashing
 
-   ```bash
-   mkdir build && cd build 
-   cmake ..
-   make -j$(nproc)
-   ```
+To build the project, follow these steps. You can choose which test application to build:
 
-Connect the Pico 2 in **BOOTSEL** mode and copy the generated .uf2 file: 
+1.  **Navigate to the project root and create a build directory**:
+    ```bash
+    cd /Users/fedeeee/Desktop/MagentaRTOS
+    mkdir -p build && cd build
+    ```
+
+2.  **Configure CMake to select the test layer**:
+    *   **To build Layer 1 (Kernel Core) test (`main.c`):**
+        ```bash
+        cmake -DBUILD_TEST_TYPE=L1 ..
+        ```
+    *   **To build Layer 2 (IPC & Synchronization) test (`test_sync.c`):**
+        ```bash
+        cmake -DBUILD_TEST_TYPE=L2 ..
+        ```
+    (By default, `L1` is selected if `BUILD_TEST_TYPE` is not specified.)
+
+3.  **Compile the project**:
+    ```bash
+    cmake --build .
+    # or
+    # make -j$(nproc)
+    ```
+
+Connect the Pico 2 in **BOOTSEL** mode and copy the generated `.uf2` file (e.g., `build/Magenta.uf2`) to the mounted RPI-RP2 drive:
 
 ```bash
 cp Magenta.uf2 /path/to/RPI-RP2/
 ```
+
+---
+
+## Serial Monitoring
+
+Per monitorare l'output seriale del Pico dal terminale, puoi usare `picocom`.
+
+1.  **Installazione (se non lo hai già):**
+    Su macOS, puoi installarlo tramite Homebrew:
+    ```bash
+    brew install picocom
+    ```
+
+2.  **Connessione alla Porta Seriale del Pico:**
+    Una volta installato, puoi connetterti alla porta seriale del tuo Pico specificando la porta e il baud rate (generalmente 115200 per il Pico):
+
+    ```bash
+    picocom -b 115200 /dev/cu.usbmodem101
+    ```
+    Sostituisci `/dev/cu.usbmodem101` con la porta corretta, se fosse diversa (puoi trovarla con `ls /dev/cu.*`).
+
+3.  **Funzionalità Utili di `picocom`:**
+    *   **Uscire**: Per uscire da `picocom`, premi `Ctrl+A` seguito da `Ctrl+Q`.
+    *   **Menu Aiuto**: Per vedere i comandi disponibili, premi `Ctrl+A` seguito da `Ctrl+H`.
+
+`picocom` ti darà un'esperienza affidabile per il monitoraggio seriale.

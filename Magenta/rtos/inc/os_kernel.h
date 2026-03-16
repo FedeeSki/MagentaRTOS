@@ -2,6 +2,7 @@
 #define OS_KERNEL_H
 
 #include "os_types.h"
+#include "os_port.h"
 
 /* Possible task STATES */
 typedef enum {
@@ -13,7 +14,8 @@ typedef enum {
 /* Task Control Block */ 
 typedef struct os_tcb {
     os_stack_t      *stackPtr; 
-    struct os_tcb   *next; 
+    struct os_tcb   *next;      /* Main circular list */
+    struct os_tcb   *wait_next; /* Wait list for sync primitives */
     os_priority_t    priority; 
     os_task_state_t  state;  
     uint32_t         task_id; 

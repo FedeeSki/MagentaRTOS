@@ -46,10 +46,8 @@ void OS_Time_Update(void) {
 
     /* Traverse the circular list of tasks */
     do {
-        if (temp->state == TASK_STATE_BLOCKED) {
-            if (temp->sleep_ticks > 0) {
-                temp->sleep_ticks--;
-            }
+        if (temp->state == TASK_STATE_BLOCKED && temp->sleep_ticks > 0) {
+            temp->sleep_ticks--;
 
             /* If the sleep time has expired, the task becomes ready */
             if (temp->sleep_ticks == 0) {

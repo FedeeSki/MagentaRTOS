@@ -2,15 +2,6 @@
 #include <stddef.h>
 #include <stdio.h>
 
-/* Interrupt management helpers => (Change Processor State, Interrupt Disable)*/
-static inline void __disable_irq(void) {
-    __asm volatile ("CPSID I" : : : "memory");
-}
-
-static inline void __enable_irq(void) {
-    __asm volatile ("CPSIE I" : : : "memory");
-}
-
 /* Global kernel state */
 os_tcb_t *currentTCB = NULL;
 static uint32_t next_task_id = 0;
@@ -81,7 +72,7 @@ os_status_t OS_TaskCreate(os_tcb_t *tcb, void (*task_func)(void), os_stack_t *st
     printf("[KERNEL] Created Task %lu (Func: %p, SP: %p)\n", tcb->task_id, task_func, tcb->stackPtr);
 
     /* Insert into circular list */
-    __disable_irq();
+    OS_ENTER_CRITICAL();
     if (currentTCB == NULL) {
         currentTCB = tcb;
         tcb->next = tcb;
@@ -89,7 +80,7 @@ os_status_t OS_TaskCreate(os_tcb_t *tcb, void (*task_func)(void), os_stack_t *st
         tcb->next = currentTCB->next;
         currentTCB->next = tcb;
     }
-    __enable_irq();
+    OS_EXIT_CRITICAL();
 
     return OS_OK;
 }
@@ -105,7 +96,7 @@ void OS_Start(void) {
     OS_Port_InitTick(1);
 
     /* Final setup with interrupts disabled */
-    __disable_irq();
+    OS_ENTER_CRITICAL();
 
     /* Set PSP to 0 signals PendSV to skip save */
     __asm volatile ("msr psp, %0" : : "r" (0));
@@ -114,7 +105,7 @@ void OS_Start(void) {
     *((volatile uint32_t *)0xE000ED04) = (1UL << 28);
 
     /* Enable interrupts to trigger the switch */
-    __enable_irq();
+    OS_EXIT_CRITICAL();
     
     /* We should never reach this line as the stack pointer changes to Task 1 */
     while(1);

@@ -25,14 +25,32 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # 2. Initialize the SDK
 pico_sdk_init()
 
+# Define an option to choose which test application to build
+option(BUILD_TEST_TYPE "Choose the test application to build (L1, L2)" "L1")
+
+# Set the source file based on the option
+set(TEST_APP_SOURCE "")
+if (BUILD_TEST_TYPE STREQUAL "L1")
+    set(TEST_APP_SOURCE "tests/main.c")
+    message(STATUS "Building Layer 1 Test (main.c)")
+elseif (BUILD_TEST_TYPE STREQUAL "L2")
+    set(TEST_APP_SOURCE "tests/test_sync.c")
+    message(STATUS "Building Layer 2 Test (test_sync.c)")
+else()
+    message(FATAL_ERROR "Invalid BUILD_TEST_TYPE specified: ${BUILD_TEST_TYPE}. Use L1 or L2.")
+endif()
+
 add_executable(Magenta
-    tests/main.c
+    ${TEST_APP_SOURCE}
 
     # Layer 1: Kernel Base
     rtos/src/os_kernel.c
     rtos/src/os_time.c
     rtos/port/os_port.c
     rtos/port/os_port_asm.s
+
+    # Layer 2: IPC & Sync
+    rtos/src/os_sync.c
 )
 
 # 3. Include Directories
