@@ -52,14 +52,7 @@ os_status_t OS_TaskCreate(os_tcb_t *tcb, void (*task_func)(void), os_stack_t *st
     if (tcb == NULL || task_func == NULL || stack_base == NULL || stack_size == 0) {
         return OS_ERR_PARAM;
     }
-
-    /* Align stack to 8 bytes (per difetto)
-    * 
-    *   L'allineamento è la regola per cui un dato deve iniziare
-    *   a un indirizzo di memoria che sia un multiplo della sua
-    *   dimensione (8 byte). (Terminano con 3 zeri)
-    *   "From reading 1 byte, to 4byte each time "
-    */
+    
     uintptr_t top_address = (uintptr_t)stack_base + (stack_size * sizeof(os_stack_t));
     os_stack_t *stack_top = (os_stack_t *)(top_address & ~0x7);
 
@@ -68,6 +61,11 @@ os_status_t OS_TaskCreate(os_tcb_t *tcb, void (*task_func)(void), os_stack_t *st
     tcb->state = TASK_STATE_READY;
     tcb->sleep_ticks = 0;
     tcb->task_id = next_task_id++;
+
+    /* MPU & Priority Prep */
+    tcb->stack_base = stack_base;
+    tcb->stack_size = stack_size;
+    tcb->priority = 10; /* Default priority for now */
 
     printf("[KERNEL] Created Task %lu (Func: %p, SP: %p)\n", tcb->task_id, task_func, tcb->stackPtr);
 

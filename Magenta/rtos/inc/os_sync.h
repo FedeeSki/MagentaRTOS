@@ -4,7 +4,7 @@
 #include "os_kernel.h"
 
 /**
- * @brief Semaphore structure
+ * Semaphore structure
  */
 typedef struct {
     uint32_t    count;
@@ -13,7 +13,7 @@ typedef struct {
 } os_sem_t;
 
 /**
- * @brief Mutex structure
+ * Mutex structure
  */
 typedef struct {
     os_tcb_t   *owner;

@@ -25,20 +25,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # 2. Initialize the SDK
 pico_sdk_init()
 
-# Define an option to choose which test application to build
-option(BUILD_TEST_TYPE "Choose the test application to build (L1, L2)" "L1")
+set(TEST "L1" CACHE STRING "")
+set_property(CACHE TEST PROPERTY STRINGS "L1" "L2")
 
-# Set the source file based on the option
-set(TEST_APP_SOURCE "")
-if (BUILD_TEST_TYPE STREQUAL "L1")
-    set(TEST_APP_SOURCE "tests/main.c")
-    message(STATUS "Building Layer 1 Test (main.c)")
-elseif (BUILD_TEST_TYPE STREQUAL "L2")
+if("${TEST}" STREQUAL "L2")
     set(TEST_APP_SOURCE "tests/test_sync.c")
-    message(STATUS "Building Layer 2 Test (test_sync.c)")
+elseif("${TEST}" STREQUAL "L3")
+    message(FATAL_ERROR "L3 missing")
 else()
-    message(FATAL_ERROR "Invalid BUILD_TEST_TYPE specified: ${BUILD_TEST_TYPE}. Use L1 or L2.")
+    set(TEST_APP_SOURCE "tests/main.c")
 endif()
+
+message(STATUS "TEST: ${TEST} (${TEST_APP_SOURCE})")
 
 add_executable(Magenta
     ${TEST_APP_SOURCE}

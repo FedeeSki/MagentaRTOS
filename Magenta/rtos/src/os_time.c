@@ -1,4 +1,5 @@
 #include "os_kernel.h"
+#include "os_time.h"
 
 /* ARM Cortex-M System Control Block registers */
 #define SCB_ICSR            (*((volatile uint32_t *)0xE000ED04))
@@ -30,7 +31,7 @@ void OS_Delay(uint32_t ticks) {
 }
 
 /**
- * @brief Updates the sleep counters for all tasks.
+ *  Updates the sleep counters for all tasks.
  *
  * This function is called by the SysTick handler at every system tick.
  * It iterates through the list of tasks and decrements the sleep counter

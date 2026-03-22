@@ -1,29 +1,39 @@
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
-#include "os_kernel.h"
-#include <stdio.h>
+#include "magenta.h"
 
-/* LED pins for visual debugging */
 #define BLUE_LED 15
 #define RED_LED  14
 
-/* Stack size for test tasks */
-#define TEST_STACK_SIZE 1024
-
-/* Global counters to track task activity */
+/* Global counters for the Monitor */
 volatile uint32_t t1_count = 0;
 volatile uint32_t t2_count = 0;
 volatile uint32_t t3_count = 0;
 volatile uint32_t t4_count = 0;
 
-/* TCBs and Stacks */
-static os_tcb_t tcb1, tcb2, tcb3, tcb4;
-static os_stack_t s1[TEST_STACK_SIZE], s2[TEST_STACK_SIZE], s3[TEST_STACK_SIZE], s4[TEST_STACK_SIZE];
+/* Static Allocation for 4 Tasks */
+OS_TASK_STACK_DEFINE(Task1, 512);
+OS_TASK_TCB_DEFINE(Task1);
 
-/* Task 1: Start indicator (Blue LED) */
-void Task1_StartIndicator(void) {
-    printf("[TASK 1] Start Indicator Online (Blue LED)\n");
-    while (1) {
+OS_TASK_STACK_DEFINE(Task2, 512);
+OS_TASK_TCB_DEFINE(Task2);
+
+OS_TASK_STACK_DEFINE(Task3, 512);
+OS_TASK_TCB_DEFINE(Task3);
+
+OS_TASK_STACK_DEFINE(Task4, 1024); /* Larger stack for printf */
+OS_TASK_TCB_DEFINE(Task4);
+
+
+// OS_TASK_STACK_DEFINE(Monster, 150000);
+// OS_TASK_TCB_DEFINE(Monster);
+
+
+/* T1: Blue LED Heartbeat */
+void Task1_Blue(void) {
+    gpio_init(BLUE_LED);
+    gpio_set_dir(BLUE_LED, GPIO_OUT);
+    while(1) {
         gpio_put(BLUE_LED, 1);
         OS_Delay(250);
         gpio_put(BLUE_LED, 0);
@@ -32,81 +42,70 @@ void Task1_StartIndicator(void) {
     }
 }
 
-/* Task 2: Workload (Integer) */
-void Task2_Math(void) {
-    printf("[TASK 2] Integer Worker Online\n");
+/* T2: Integer Math Workload */
+void Task2_IntMath(void) {
     volatile uint32_t val = 0;
-    while (1) {
-        for(int i=0; i<10000; i++) {
+    while(1) {
+        for(int i=0; i<5000; i++) {
             val = (val + i) % 1000;
         }
         t2_count++;
-        OS_Delay(100);
+        OS_Delay(50);
     }
 }
 
-/* Task 3: Workload (FPU) */
-void Task3_FPU(void) {
-    printf("[TASK 3] FPU Worker Online\n");
+/* T3: FPU Math Workload (Virtuosismo) */
+void Task3_FPUMath(void) {
     float f = 1.0f;
-    while (1) {
-        for(int i=0; i<5000; i++) {
+    while(1) {
+        for(int i=0; i<2000; i++) {
             f = (f * 1.001f) / 0.999f;
-            if (f > 1000.0f) f = 1.0f;
+            if (f > 100.0f) f = 1.0f;
         }
         t3_count++;
-        OS_Delay(100);
+        OS_Delay(50);
     }
 }
 
-/* Task 4: End indicator (Red LED) + Console Monitor */
-void Task4_EndIndicator(void) {
-    printf("[TASK 4] End Indicator Online (Red LED)\n");
-    while (1) {
+/* T4: Red LED + System Monitor */
+void Task4_Monitor(void) {
+    gpio_init(RED_LED);
+    gpio_set_dir(RED_LED, GPIO_OUT);
+    while(1) {
         gpio_put(RED_LED, 1);
-        OS_Delay(250);
+        OS_Delay(500);
         gpio_put(RED_LED, 0);
-        OS_Delay(250);
+        OS_Delay(500);
         t4_count++;
-        
-        /* Print heartbeat every 4 toggles (approx every 2 seconds) */
-        if (t4_count % 4 == 0) {
+
+        /* Print Dashboard every 4 cycles (~4 seconds) */
+        if(t4_count % 4 == 0) {
             printf("\n--- RTOS MONITOR ---\n");
-            printf("T1 (BLUE): %lu cycles\n", t1_count);
-            printf("T2 (INT) : %lu cycles\n", t2_count);
-            printf("T3 (FPU) : %lu cycles\n", t3_count);
-            printf("T4 (RED) : %lu cycles\n", t4_count);
+            printf("T1 (BLUE) : %lu cycles\n", t1_count);
+            printf("T2 (INT)  : %lu cycles\n", t2_count);
+            printf("T3 (FPU)  : %lu cycles\n", t3_count);
+            printf("T4 (RED)  : %lu cycles\n", t4_count);
             printf("--------------------\n");
         }
     }
 }
 
-int main(void) {
-    /* Standard Pico SDK initialization */
+int main() {
     stdio_init_all();
-    
-    /* Setup LED GPIOs */
-    gpio_init(BLUE_LED);
-    gpio_set_dir(BLUE_LED, GPIO_OUT);
-    gpio_init(RED_LED);
-    gpio_set_dir(RED_LED, GPIO_OUT);
+    sleep_ms(2000); /* Wait for UART */
+    printf("--- MagentaRTOS Dashboard Test ---\n");
 
-    /* Small delay to let UART connect */
-    sleep_ms(2000);
-    printf("--- MagentaRTOS Layer 1 Stress Test ---\n");
-
-    /* Initialize Kernel */
     OS_Init();
 
-    /* Create tasks */
-    OS_TaskCreate(&tcb1, Task1_StartIndicator, s1, TEST_STACK_SIZE);
-    OS_TaskCreate(&tcb2, Task2_Math, s2, TEST_STACK_SIZE);
-    OS_TaskCreate(&tcb3, Task3_FPU, s3, TEST_STACK_SIZE);
-    OS_TaskCreate(&tcb4, Task4_EndIndicator, s4, TEST_STACK_SIZE);
+    /* Create Tasks Statistically */
+    OS_TASK_CREATE_STATIC(Task1, Task1_Blue, 512);
+    OS_TASK_CREATE_STATIC(Task2, Task2_IntMath, 512);
+    OS_TASK_CREATE_STATIC(Task3, Task3_FPUMath, 512);
+    OS_TASK_CREATE_STATIC(Task4, Task4_Monitor, 1024);
 
-    printf("[KERNEL] Starting Scheduler...\n");
+    // OS_TASK_CREATE_STATIC(Monster, Task1_Blue, 150000);
+
+    printf("[KERNEL] System Ready. Starting Scheduler...\n");
     OS_Start();
-
-    while(1);
     return 0;
 }
