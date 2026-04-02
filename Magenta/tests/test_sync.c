@@ -1,92 +1,76 @@
 #include "pico/stdlib.h"
-#include "hardware/gpio.h"
+#include <stdio.h>
 #include "magenta.h"
 
-#define BLUE_LED 15
-#define RED_LED  14
+os_mutex_t shared_mutex;
 
-/* Oggetti di sincronizzazione */
-os_sem_t sem_items;
-os_mutex_t resource_mutex;
+/* Helper per stampare lo stato del task */
+void print_task_status(const char* name, os_priority_t p, os_priority_t bp) {
+    printf("[%s] Prio Corrente: %u (Base: %u)\n", name, p, bp);
+}
 
-/* Allocazione Statica per i Task di Sincronizzazione */
-OS_TASK_STACK_DEFINE(Producer, 1024);
-OS_TASK_TCB_DEFINE(Producer);
-
-OS_TASK_STACK_DEFINE(Consumer, 1024);
-OS_TASK_TCB_DEFINE(Consumer);
-
-OS_TASK_STACK_DEFINE(Mutex1, 1024);
-OS_TASK_TCB_DEFINE(Mutex1);
-
-OS_TASK_STACK_DEFINE(Mutex2, 1024);
-OS_TASK_TCB_DEFINE(Mutex2);
-
-void ProducerTask(void) {
-    gpio_init(BLUE_LED);
-    gpio_set_dir(BLUE_LED, GPIO_OUT);
-    while (1) {
-        OS_Delay(1000); 
-        gpio_put(BLUE_LED, 1);
-        OS_SemPost(&sem_items);
-        OS_Delay(100); 
-        gpio_put(BLUE_LED, 0);
-        printf("[PRODUCER] Segnale inviato (Semaforo)\n");
+/* Task L: Priorità 10 (Minima) */
+OS_TASK_STACK_DEFINE(TaskL, 1024);
+OS_TASK_TCB_DEFINE(TaskL);
+void TaskL_Func(void) {
+    extern os_tcb_t *currentTCB;
+    while(1) {
+        printf("[L] Tento di prendere il Mutex...\n");
+        OS_MutexLock(&shared_mutex);
+        print_task_status("L", currentTCB->priority, currentTCB->base_priority);
+        printf("[L] Mutex preso. Simulo lavoro critico per 5 secondi...\n");
+        
+        /* 
+         * Durante questi 5 secondi, se Task H si sveglia e prova a prendere il mutex,
+         * vedrai la priorità di L salire a 100 nei log successivi o tramite monitor.
+         */
+        OS_Delay(5000); 
+        
+        print_task_status("L", currentTCB->priority, currentTCB->base_priority);
+        printf("[L] Rilascio Mutex.\n");
+        OS_MutexUnlock(&shared_mutex);
+        OS_Delay(1000);
     }
 }
 
-void ConsumerTask(void) {
-    while (1) {
-        OS_SemWait(&sem_items);
-        printf("[CONSUMER] Elemento consumato!\n");
+/* Task M: Priorità 50 (Media) - Il "Disturbatore" */
+OS_TASK_STACK_DEFINE(TaskM, 1024);
+OS_TASK_TCB_DEFINE(TaskM);
+void TaskM_Func(void) {
+    OS_Delay(2000); // Aspetta che L sia dentro
+    while(1) {
+        printf("[M] Task Medio (50) in esecuzione. Se L non eredita 100, H non correrà mai!\n");
+        /* Stress CPU simulato con delay corto per non bloccare la UART */
+        OS_Delay(1000);
     }
 }
 
-void MutexTask1(void) {
-    gpio_init(RED_LED);
-    gpio_set_dir(RED_LED, GPIO_OUT);
-    while (1) {
-        OS_MutexLock(&resource_mutex);
-        gpio_put(RED_LED, 1);
-        printf("[MUTEX 1] Risorsa acquisita\n");
-        OS_Delay(500);
-        OS_MutexUnlock(&resource_mutex);
-        gpio_put(RED_LED, 0);
-        OS_Delay(200);
+/* Task H: Priorità 100 (Alta) */
+OS_TASK_STACK_DEFINE(TaskH, 1024);
+OS_TASK_TCB_DEFINE(TaskH);
+void TaskH_Func(void) {
+    OS_Delay(3000); // Aspetta che L abbia il mutex e M stia rompendo
+    while(1) {
+        printf("[H] Task Alta (100) vuole il Mutex. Provo a prenderlo...\n");
+        OS_MutexLock(&shared_mutex);
+        printf("[H] SUCCESSO! Ho il Mutex.\n");
+        OS_MutexUnlock(&shared_mutex);
+        OS_Delay(2000);
     }
 }
 
-void MutexTask2(void) {
-    while (1) {
-        OS_MutexLock(&resource_mutex);
-        gpio_put(RED_LED, 1);
-        printf("[MUTEX 2] Risorsa acquisita\n");
-        OS_Delay(300);
-        OS_MutexUnlock(&resource_mutex);
-        gpio_put(RED_LED, 0);
-        OS_Delay(400);
-    }
-}
-
-int main(void) {
+int main() {
     stdio_init_all();
     sleep_ms(2000);
-    printf("--- MagentaRTOS Layer 2: Sync LED Test ---\n");
-
+    printf("\n--- MagentaRTOS Priority Inheritance Stress Test ---\n");
+    
     OS_Init();
-
-    /* Inizializzazione primitive */
-    OS_SemInit(&sem_items, 0, 10);
-    OS_MutexInit(&resource_mutex);
-
-    /* Creazione Task */
-    OS_TASK_CREATE_STATIC(Producer, ProducerTask, 1024);
-    OS_TASK_CREATE_STATIC(Consumer, ConsumerTask, 1024);
-    OS_TASK_CREATE_STATIC(Mutex1, MutexTask1, 1024);
-    OS_TASK_CREATE_STATIC(Mutex2, MutexTask2, 1024);
-
-    printf("[KERNEL] Avvio Scheduler...\n");
+    OS_MutexInit(&shared_mutex);
+    
+    OS_TASK_CREATE_STATIC(TaskL, TaskL_Func, 1024, 10);
+    OS_TASK_CREATE_STATIC(TaskM, TaskM_Func, 1024, 50);
+    OS_TASK_CREATE_STATIC(TaskH, TaskH_Func, 1024, 100);
+    
     OS_Start();
-
     return 0;
 }

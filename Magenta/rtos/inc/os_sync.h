@@ -15,10 +15,11 @@ typedef struct {
 /**
  * Mutex structure
  */
-typedef struct {
+typedef struct os_mutex {
     os_tcb_t   *owner;
     uint32_t    lock_count;
-    os_tcb_t   *wait_list;
+    os_tcb_t   *wait_list;      /* Priority-ordered list of waiting tasks */
+    struct os_mutex *next_owned; /* Chain of mutexes held by the same task */
 } os_mutex_t;
 
 /* Semaphore API */

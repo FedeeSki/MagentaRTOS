@@ -30,6 +30,9 @@ typedef enum {
     TASK_STATE_BLOCKED
 } os_task_state_t;
 
+/* Forward declarations */
+struct os_mutex;
+
 /**
  * Task Control Block (TCB)
  * Tracks the state, stack, and metadata of each task.
@@ -40,8 +43,12 @@ typedef struct os_tcb {
     struct os_tcb   *wait_next;     /* Synchronization wait list */
     
     /* Real-Time & Safety */
-    os_priority_t    priority;      /* Lower = Higher priority */
+    os_priority_t    priority;      /* Current priority (can be inherited) */
+    os_priority_t    base_priority; /* Original priority (base value) */
     os_task_state_t  state;         /* Ready, Running, Blocked */
+    
+    /* Ownership tracking for priority inheritance */
+    struct os_mutex *owned_mutex_list; /* Linked list of mutexes held by this task */
     
     /* MPU & Stack Guard */
     os_stack_t      *stack_base;    /* Start of stack RAM */

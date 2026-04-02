@@ -18,25 +18,64 @@ void OS_IdleTask(void) {
     }
 }
 
-/* Initialize kernel and create the idle task */
+/* Initialize kernel and create the idle task with lowest priority (0) */
 void OS_Init(void) {
-    printf("[KERNEL] Initializing OS...\n");
+    printf("[KERNEL] Initializing OS (Priority-based Scheduler)...\n");
     currentTCB = NULL;
     next_task_id = 0;
 
-    OS_TaskCreate(&idleTCB, OS_IdleTask, idle_stack, IDLE_STACK_SIZE);
-    printf("[KERNEL] Idle Task created.\n");
+    /* Priority 0 is the lowest in our increasing priority policy */
+    OS_TaskCreate(&idleTCB, OS_IdleTask, idle_stack, IDLE_STACK_SIZE, 0);
 }
 
-/* Simple round-robin scheduler */
+/**
+ * Finds the highest priority task that is in the READY state.
+ * Implementation: Linear scan (O(n)) prepared for Bitmask optimization.
+ */
+static os_tcb_t* OS_Get_Highest_Priority_Task(void) {
+    if (currentTCB == NULL) return NULL;
+
+    os_tcb_t *best_tcb = NULL;
+    os_priority_t max_priority = 0;
+    os_tcb_t *temp = currentTCB;
+
+    /* Traverse the circular list to find the highest priority READY task */
+    do {
+        if (temp->state == TASK_STATE_READY) {
+            if (temp->priority > max_priority) {
+                max_priority = temp->priority;
+                best_tcb = temp;
+            } else if (temp->priority == max_priority && best_tcb != NULL) {
+                /* If priorities are equal, follow circular order (Round-Robin) */
+            }
+        }
+        temp = temp->next;
+    } while (temp != currentTCB);
+
+    /* If no other task is ready, fallback to Idle (which is priority 0 and always ready) */
+    return best_tcb ? best_tcb : &idleTCB;
+}
+
+/* Priority-based Scheduler */
 void OS_Scheduler(void) {
     if (currentTCB == NULL) return;
 
-    os_tcb_t *nextTCB = currentTCB->next;
+    os_tcb_t *nextTCB = OS_Get_Highest_Priority_Task();
 
-    /* Find next ready task */
-    while (nextTCB->state != TASK_STATE_READY) {
-        nextTCB = nextTCB->next;
+    /* 
+     * If the highest priority task found is the same as current, 
+     * but there are other tasks with the SAME priority, 
+     * we should perform a Round-Robin step to be fair.
+     */
+    if (nextTCB == currentTCB) {
+        os_tcb_t *search = currentTCB->next;
+        while (search != currentTCB) {
+            if (search->state == TASK_STATE_READY && search->priority == currentTCB->priority) {
+                nextTCB = search;
+                break;
+            }
+            search = search->next;
+        }
     }
 
     currentTCB = nextTCB;
@@ -47,8 +86,8 @@ extern os_stack_t* OS_Port_StackInit(void (*task_func)(void), os_stack_t *stack_
 extern void OS_Port_InitTick(uint32_t tick_ms);
 extern void OS_Port_EnableFPU(void);
 
-/* Create a new task and add it to the circular list */
-os_status_t OS_TaskCreate(os_tcb_t *tcb, void (*task_func)(void), os_stack_t *stack_base, uint32_t stack_size) {
+/* Create a new task with specified priority */
+os_status_t OS_TaskCreate(os_tcb_t *tcb, void (*task_func)(void), os_stack_t *stack_base, uint32_t stack_size, os_priority_t priority) {
     if (tcb == NULL || task_func == NULL || stack_base == NULL || stack_size == 0) {
         return OS_ERR_PARAM;
     }
@@ -56,18 +95,20 @@ os_status_t OS_TaskCreate(os_tcb_t *tcb, void (*task_func)(void), os_stack_t *st
     uintptr_t top_address = (uintptr_t)stack_base + (stack_size * sizeof(os_stack_t));
     os_stack_t *stack_top = (os_stack_t *)(top_address & ~0x7);
 
-    /* Initialize stack frame */
+    /* Initialize TCB fields */
     tcb->stackPtr = OS_Port_StackInit(task_func, stack_top);
     tcb->state = TASK_STATE_READY;
     tcb->sleep_ticks = 0;
     tcb->task_id = next_task_id++;
-
-    /* MPU & Priority Prep */
+    
+    /* MPU & Priority */
     tcb->stack_base = stack_base;
     tcb->stack_size = stack_size;
-    tcb->priority = 10; /* Default priority for now */
+    tcb->priority = priority;
+    tcb->base_priority = priority;
+    tcb->owned_mutex_list = NULL;
 
-    printf("[KERNEL] Created Task %lu (Func: %p, SP: %p)\n", tcb->task_id, task_func, tcb->stackPtr);
+    printf("[KERNEL] Created Task %lu (Prio: %u, Func: %p)\n", tcb->task_id, tcb->priority, task_func);
 
     /* Insert into circular list */
     OS_ENTER_CRITICAL();
@@ -85,26 +126,15 @@ os_status_t OS_TaskCreate(os_tcb_t *tcb, void (*task_func)(void), os_stack_t *st
 
 /* Start the OS and switch to the first task */
 void OS_Start(void) {
-    printf("[KERNEL] OS_Start: Configuring hardware and launching first task...\n");
+    printf("[KERNEL] OS_Start: Launching Scheduler (Increasing Priority Policy)...\n");
     
-    /* Enable FPU */
     OS_Port_EnableFPU();
-
-    /* Prepare hardware tick */
     OS_Port_InitTick(1);
 
-    /* Final setup with interrupts disabled */
     OS_ENTER_CRITICAL();
-
-    /* Set PSP to 0 signals PendSV to skip save */
     __asm volatile ("msr psp, %0" : : "r" (0));
-
-    /* Trigger PendSV */
     *((volatile uint32_t *)0xE000ED04) = (1UL << 28);
-
-    /* Enable interrupts to trigger the switch */
     OS_EXIT_CRITICAL();
     
-    /* We should never reach this line as the stack pointer changes to Task 1 */
     while(1);
 }
