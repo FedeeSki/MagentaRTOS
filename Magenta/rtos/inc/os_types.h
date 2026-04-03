@@ -1,72 +1,57 @@
 #ifndef OS_TYPES_H
 #define OS_TYPES_H
 
-#include <stdint.h> // fixed dimension type 
-#include <stddef.h> // structure and memory 
-
-/**
- * Defines the data type for a stack entry.
- * On a 32-bit architecture, this should be a 32-bit unsigned integer.
- */
+#include <stdint.h>
+#include <stddef.h>
 
 typedef uint32_t os_stack_t;
-
-/**
- * Defines the data type for a system tick count.
- */
-
 typedef uint32_t os_tick_t;
+typedef uint8_t  os_priority_t;
 
-/**
- * Defines the data type for task priority.
- * A lower number typically represents a higher priority.
- */
+/* Task States (uint8_t) */
+#define OS_TASK_STATE_READY     0
+#define OS_TASK_STATE_RUNNING   1
+#define OS_TASK_STATE_BLOCKED   2
+#define OS_TASK_STATE_SLEEPING  3
 
-typedef uint8_t  os_priority_t;  // Range: 0-255
-
-typedef enum {
-    TASK_STATE_READY,
-    TASK_STATE_RUNNING,
-    TASK_STATE_BLOCKED
-} os_task_state_t;
+/* Task Flags (uint8_t) */
+#define OS_TASK_FLAG_NONE        0x00
+#define OS_TASK_FLAG_PRIVILEGED  (1 << 0)
+#define OS_TASK_FLAG_FPU_ACTIVE  (1 << 1)
+#define OS_TASK_FLAG_STATIC      (1 << 2)
 
 /* Forward declarations */
 struct os_mutex;
 
 /**
- * Task Control Block (TCB)
- * Tracks the state, stack, and metadata of each task.
+ * Task Control Block (TCB) - Optimized Layout (40 bytes)
+ * 32-bit aligned fields first, then grouped control bytes.
  */
 typedef struct os_tcb {
-    os_stack_t      *stackPtr;      /* Current Stack Pointer */
-    struct os_tcb   *next;          /* Circular ready list */
-    struct os_tcb   *wait_next;     /* Synchronization wait list */
+    os_stack_t      *stackPtr;      /* Offset 0  */
+    struct os_tcb   *next;          /* Offset 4  */
+    struct os_tcb   *wait_next;     /* Offset 8  */
+    struct os_mutex *owned_mutexes; /* Offset 12 */
     
-    /* Real-Time & Safety */
-    os_priority_t    priority;      /* Current priority (can be inherited) */
-    os_priority_t    base_priority; /* Original priority (base value) */
-    os_task_state_t  state;         /* Ready, Running, Blocked */
+    os_stack_t      *stack_base;    /* Offset 16 */
+    uint32_t         stack_size;    /* Offset 20 */
     
-    /* Ownership tracking for priority inheritance */
-    struct os_mutex *owned_mutex_list; /* Linked list of mutexes held by this task */
+    uint32_t         task_id;       /* Offset 24 */
+    uint32_t         sleep_ticks;   /* Offset 28 */
     
-    /* MPU & Stack Guard */
-    os_stack_t      *stack_base;    /* Start of stack RAM */
-    uint32_t         stack_size;    /* Size in os_stack_t units */
+    uint8_t          state;         /* Offset 32 */
+    os_priority_t    priority;      /* Offset 33 */
+    os_priority_t    base_priority; /* Offset 34 */
+    uint8_t          flags;         /* Offset 35 */
     
-    /* Metadata */
-    uint32_t         task_id;
-    uint32_t         sleep_ticks;
+    uint32_t         reserved;      /* Offset 36 - Padding to 40 bytes */
 } os_tcb_t;
 
-/**
- * Defines the standard status codes returned by OS functions.
- */
 typedef enum {
-    OS_OK = 0,              /* Operation was SUCCESSFUL */
-    OS_ERR_PARAM,           /* An invalid parameter */
-    OS_ERR_STACK_OVERFLOW,  /* A task stack has overflowed */
-    OS_ERR_RESOURCE_BUSY    /* A requested resource is unavailable */
+    OS_OK = 0,
+    OS_ERR_PARAM,
+    OS_ERR_STACK_OVERFLOW,
+    OS_ERR_RESOURCE_BUSY
 } os_status_t;
 
-#endif
+#endif /* OS_TYPES_H */

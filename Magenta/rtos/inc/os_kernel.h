@@ -11,10 +11,10 @@ os_status_t OS_TaskCreate(os_tcb_t *tcb, void (*task_func)(void), os_stack_t *st
 
 /* Static Allocation Macros */
 #define OS_TASK_STACK_DEFINE(name, size) \
-    static os_stack_t name##_stack[size]
+    __attribute__((aligned(32))) static os_stack_t name##_stack[size]
 
 #define OS_TASK_TCB_DEFINE(name) \
-    static os_tcb_t name##_tcb
+    __attribute__((aligned(4))) static os_tcb_t name##_tcb
 
 #define OS_TASK_CREATE_STATIC(name, task_func, stack_size, priority) \
     OS_TaskCreate(&name##_tcb, task_func, name##_stack, stack_size, priority)

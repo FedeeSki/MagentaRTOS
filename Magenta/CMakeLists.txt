@@ -44,6 +44,7 @@ add_executable(Magenta
     # Layer 1: Kernel Base
     rtos/src/os_kernel.c
     rtos/src/os_time.c
+    rtos/src/os_mpu.c
     rtos/port/os_port.c
     rtos/port/os_port_asm.s
 

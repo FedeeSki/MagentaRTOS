@@ -5,80 +5,86 @@
 #define BLUE_LED 15
 #define RED_LED  14
 
-volatile uint32_t t1_cycles = 0, t2_cycles = 0, t3_cycles = 0, t4_cycles = 0;
+/* Helper per ritardare l'esecuzione in User Mode senza chiamare funzioni Kernel.
+   In User Mode non possiamo accedere a variabili globali o usare OS_Delay 
+   (che disabilita gli interrupt). Usiamo cicli NOP locali. */
+void user_busy_wait(uint32_t iterations) {
+    for(volatile uint32_t i=0; i<iterations; i++) {
+        __asm volatile("nop");
+    }
+}
 
-/* T1: Alta Priorità (150) - Risposta rapida I/O */
-OS_TASK_STACK_DEFINE(T1_Critical, 512);
-OS_TASK_TCB_DEFINE(T1_Critical);
-void Task1_Critical(void) {
-    gpio_init(BLUE_LED);
-    gpio_set_dir(BLUE_LED, GPIO_OUT);
+/* ------------------------------------------------------------------
+ * TASK 1: LED Blink (Testa l'accesso alla Region 2 - SIO)
+ * ------------------------------------------------------------------ */
+OS_TASK_STACK_DEFINE(Task1_LED, 512);
+OS_TASK_TCB_DEFINE(Task1_LED);
+void Task1_Func(void) {
+    /* Nota: Usiamo solo variabili locali (nello Stack, Region 4). 
+       Nessun printf() perché la libreria C usa variabili globali in RAM! */
     while(1) {
         gpio_put(BLUE_LED, 1);
-        OS_Delay(100);
+        user_busy_wait(1000000);
         gpio_put(BLUE_LED, 0);
-        OS_Delay(100);
-        t1_cycles++;
+        user_busy_wait(1000000);
     }
 }
 
-/* T2: Media Priorità (100) - Logica di controllo */
-OS_TASK_STACK_DEFINE(T2_Control, 512);
-OS_TASK_TCB_DEFINE(T2_Control);
-void Task2_Control(void) {
-    volatile uint32_t x = 0;
-    while(1) {
-        for(int i=0; i<5000; i++) x = (x + i) % 777;
-        t2_cycles++;
-        OS_Delay(50);
-    }
-}
-
-/* T3: Bassa Priorità (50) - Calcoli pesanti in background */
-OS_TASK_STACK_DEFINE(T3_Background, 512);
-OS_TASK_TCB_DEFINE(T3_Background);
-void Task3_Background(void) {
-    float f = 1.1f;
-    while(1) {
-        for(int i=0; i<2000; i++) f = (f * 1.01f) / 0.99f;
-        t3_cycles++;
-        OS_Delay(20);
-    }
-}
-
-/* T4: Priorità Massima (200) - Monitor di Sistema */
-OS_TASK_STACK_DEFINE(T4_Monitor, 1024);
-OS_TASK_TCB_DEFINE(T4_Monitor);
-void Task4_Monitor(void) {
-    gpio_init(RED_LED);
-    gpio_set_dir(RED_LED, GPIO_OUT);
+/* ------------------------------------------------------------------
+ * TASK 2: LED Rosso (Testa l'accesso alla Region 2 - SIO con freq diversa)
+ * ------------------------------------------------------------------ */
+OS_TASK_STACK_DEFINE(Task2_LED, 512);
+OS_TASK_TCB_DEFINE(Task2_LED);
+void Task2_Func(void) {
     while(1) {
         gpio_put(RED_LED, 1);
-        OS_Delay(2000);
+        user_busy_wait(2000000);
         gpio_put(RED_LED, 0);
-        OS_Delay(2000);
-        t4_cycles++;
-        
-        printf("\n--- MagentaRTOS Real-Time Dashboard ---\n");
-        printf("T1 (Critical) [P:150]: %lu\n", t1_cycles);
-        printf("T2 (Control)  [P:100]: %lu\n", t2_cycles);
-        printf("T3 (Backgr)   [P: 50]: %lu\n", t3_cycles);
-        printf("T4 (Monitor)  [P:200]: %lu\n", t4_cycles);
-        printf("--------------------------------------\n");
+        user_busy_wait(2000000);
+    }
+}
+
+/* ------------------------------------------------------------------
+ * TASK 3: FPU Math (Testa l'accesso alla Region 4 - Task Stack)
+ * ------------------------------------------------------------------ */
+OS_TASK_STACK_DEFINE(Task3_Math, 512);
+OS_TASK_TCB_DEFINE(Task3_Math);
+void Task3_Func(void) {
+    /* Il calcolo float forza il salvataggio dei registri S16-S31 nel Context Switch */
+    volatile float f = 1.0f;
+    while(1) {
+        for(int i=0; i<1000; i++) {
+            f = (f * 1.01f) / 0.99f;
+        }
     }
 }
 
 int main() {
     stdio_init_all();
-    sleep_ms(2000);
+    
+    /* Inizializzazione Hardware Globale sicura (SUDO Mode) */
+    gpio_init(BLUE_LED);
+    gpio_set_dir(BLUE_LED, GPIO_OUT);
+    gpio_put(BLUE_LED, 0);
+    
+    gpio_init(RED_LED);
+    gpio_set_dir(RED_LED, GPIO_OUT);
+    gpio_put(RED_LED, 0);
+
+    sleep_ms(3000);
+
     OS_Init();
-    
-    OS_TASK_CREATE_STATIC(T1_Critical,   Task1_Critical,   512,  150);
-    OS_TASK_CREATE_STATIC(T2_Control,    Task2_Control,    512,  100);
-    OS_TASK_CREATE_STATIC(T3_Background, Task3_Background, 512,   50);
-    OS_TASK_CREATE_STATIC(T4_Monitor,    Task4_Monitor,    1024, 200);
-    
-    printf("[KERNEL] System Ready. Starting Scheduler...\n");
+
+    /* 
+     * Creiamo i task con la STESSA PRIORITÀ (10).
+     * Dato che i task usano "busy waits" e non cedono mai volontariamente la CPU,
+     * mettendoli alla pari costringiamo lo scheduler a usare il ROUND-ROBIN.
+     * La CPU passerà da uno all'altro ogni 1ms grazie al SysTick (Preemption).
+     */
+    OS_TASK_CREATE_STATIC(Task1_LED,  Task1_Func, 512, 10);
+    OS_TASK_CREATE_STATIC(Task2_LED,  Task2_Func, 512, 10);
+    OS_TASK_CREATE_STATIC(Task3_Math, Task3_Func, 512, 10);
+
     OS_Start();
     return 0;
 }

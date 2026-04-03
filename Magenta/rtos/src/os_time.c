@@ -11,48 +11,32 @@ extern os_tcb_t *currentTCB;
 void OS_Delay(uint32_t ticks) {
     if (ticks == 0) return;
 
-    /*
-     * Enter a critical section to prevent an interrupt from occurring
-     * while we are modifying the TCB.
-     */
-    __asm("CPSID I");
+    OS_ENTER_CRITICAL();
 
     currentTCB->sleep_ticks = ticks;
-    currentTCB->state = TASK_STATE_BLOCKED;
+    currentTCB->state = OS_TASK_STATE_SLEEPING;
 
-    /* Exit the critical section */
-    __asm("CPSIE I");
+    OS_EXIT_CRITICAL();
 
-    /*
-     * Trigger a PendSV interrupt to switch to another task immediately.
-     * It makes no sense to continue execution if the task has just been blocked.
-     */
+    /* Trigger a PendSV interrupt to switch to another task immediately */
     SCB_ICSR = SCB_ICSR_PENDSVSET_BIT;
 }
 
 /**
- *  Updates the sleep counters for all tasks.
- *
- * This function is called by the SysTick handler at every system tick.
- * It iterates through the list of tasks and decrements the sleep counter
- * for any task that is in the BLOCKED state. If a counter reaches zero,
- * the task's state is changed back to READY.
+ * Updates the sleep counters for all tasks.
+ * Called by the SysTick handler at every system tick.
  */
-
 void OS_Time_Update(void) {
-    // This function is called from an ISR, so we can assume atomicity for now
-    // regarding the list traversal, as PendSV has a lower priority.
     os_tcb_t *temp = currentTCB;
     if (temp == NULL) return;
 
     /* Traverse the circular list of tasks */
     do {
-        if (temp->state == TASK_STATE_BLOCKED && temp->sleep_ticks > 0) {
+        if (temp->state == OS_TASK_STATE_SLEEPING && temp->sleep_ticks > 0) {
             temp->sleep_ticks--;
 
-            /* If the sleep time has expired, the task becomes ready */
             if (temp->sleep_ticks == 0) {
-                temp->state = TASK_STATE_READY;
+                temp->state = OS_TASK_STATE_READY;
             }
         }
         temp = temp->next;

@@ -45,7 +45,7 @@ static os_tcb_t* wait_list_remove(os_tcb_t **list) {
 /* Internal: Recalculate task priority based on base_priority and all owned mutexes */
 static void OS_Mutex_Recalculate_Priority(os_tcb_t *tcb) {
     os_priority_t highest_prio = tcb->base_priority;
-    os_mutex_t *mutex = tcb->owned_mutex_list;
+    os_mutex_t *mutex = tcb->owned_mutexes;
 
     while (mutex != NULL) {
         if (mutex->wait_list != NULL && mutex->wait_list->priority > highest_prio) {
@@ -72,7 +72,7 @@ os_status_t OS_SemWait(os_sem_t *sem) {
         OS_EXIT_CRITICAL();
         return OS_OK;
     }
-    currentTCB->state = TASK_STATE_BLOCKED;
+    currentTCB->state = OS_TASK_STATE_BLOCKED;
     currentTCB->sleep_ticks = 0;
     wait_list_add_fifo(&sem->wait_list, currentTCB);
     OS_EXIT_CRITICAL();
@@ -84,7 +84,7 @@ void OS_SemPost(os_sem_t *sem) {
     OS_ENTER_CRITICAL();
     os_tcb_t *waiting_task = wait_list_remove(&sem->wait_list);
     if (waiting_task != NULL) {
-        waiting_task->state = TASK_STATE_READY;
+        waiting_task->state = OS_TASK_STATE_READY;
         OS_EXIT_CRITICAL();
         OS_TRIGGER_PENDSV();
     } else {
@@ -93,7 +93,7 @@ void OS_SemPost(os_sem_t *sem) {
     }
 }
 
-/* --- Mutex Implementation with Multiple Priority Inheritance --- */
+/* --- Mutex Implementation --- */
 
 void OS_MutexInit(os_mutex_t *mutex) {
     if (mutex == NULL) return;
@@ -109,9 +109,8 @@ os_status_t OS_MutexLock(os_mutex_t *mutex) {
     if (mutex->owner == NULL) {
         mutex->owner = currentTCB;
         mutex->lock_count = 1;
-        /* Add mutex to task's owned list */
-        mutex->next_owned = currentTCB->owned_mutex_list;
-        currentTCB->owned_mutex_list = mutex;
+        mutex->next_owned = currentTCB->owned_mutexes;
+        currentTCB->owned_mutexes = mutex;
         OS_EXIT_CRITICAL();
         return OS_OK;
     }
@@ -122,19 +121,16 @@ os_status_t OS_MutexLock(os_mutex_t *mutex) {
         return OS_OK;
     }
 
-    /* Block current task until mutex is released */
-    currentTCB->state = TASK_STATE_BLOCKED;
+    currentTCB->state = OS_TASK_STATE_BLOCKED;
     currentTCB->sleep_ticks = 0;
     wait_list_add_priority(&mutex->wait_list, currentTCB);
     
-    /* Propagate priority to the owner */
     if (currentTCB->priority > mutex->owner->priority) {
         mutex->owner->priority = currentTCB->priority;
     }
     
     OS_EXIT_CRITICAL();
     OS_TRIGGER_PENDSV();
-    
     return OS_OK;
 }
 
@@ -152,27 +148,24 @@ void OS_MutexUnlock(os_mutex_t *mutex) {
         return;
     }
 
-    /* Remove mutex from the task's owned list */
-    os_mutex_t **indirect = &currentTCB->owned_mutex_list;
+    /* Remove from owned list */
+    os_mutex_t **indirect = &currentTCB->owned_mutexes;
     while ((*indirect) != mutex) {
         indirect = &(*indirect)->next_owned;
     }
     *indirect = mutex->next_owned;
     mutex->next_owned = NULL;
 
-    /* Re-evaluate current task's priority */
     OS_Mutex_Recalculate_Priority(currentTCB);
 
-    /* Pass ownership to the first task in the priority-ordered wait list */
     os_tcb_t *waiting_task = wait_list_remove(&mutex->wait_list);
     if (waiting_task != NULL) {
         mutex->owner = waiting_task;
         mutex->lock_count = 1;
-        /* Add mutex to the new owner's list */
-        mutex->next_owned = waiting_task->owned_mutex_list;
-        waiting_task->owned_mutex_list = mutex;
+        mutex->next_owned = waiting_task->owned_mutexes;
+        waiting_task->owned_mutexes = mutex;
         
-        waiting_task->state = TASK_STATE_READY;
+        waiting_task->state = OS_TASK_STATE_READY;
         OS_EXIT_CRITICAL();
         OS_TRIGGER_PENDSV();
     } else {
