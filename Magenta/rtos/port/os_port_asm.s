@@ -6,10 +6,38 @@
 .type isr_pendsv, %function
 .extern currentTCB
 .extern OS_Scheduler
+.extern OS_MPU_Switch
+
+.global isr_svcall
+.type isr_svcall, %function
+.extern OS_Syscall_Handler
 
 .section .text
 
-/* isr_pendsv: Minimal context switch for MPU testing */
+/* isr_svcall: System Call Gatekeeper */
+isr_svcall:
+    /* 1. Determine which stack was in use (MSP or PSP) */
+    TST     LR, #4
+    ITE     EQ
+    MRSEQ   R0, MSP
+    MRSNE   R0, PSP
+    
+    /* 2. Extract SVC ID from [Stacked_PC - 2] into R1 */
+    LDR     R1, [R0, #24]
+    LDRB    R1, [R1, #-2]
+    
+    /* 3. Prepare arguments for C: R0 = ID, R1 = Pointer to Stack Frame */
+    MOV     R2, R0          /* R2 = pointer */
+    MOV     R0, R1          /* R0 = ID */
+    MOV     R1, R2          /* R1 = pointer */
+    
+    /* 4. Call C Dispatcher */
+    PUSH    {LR}
+    BL      OS_Syscall_Handler
+    POP     {LR}
+    BX      LR
+
+/* isr_pendsv: The working context switch (Clean version) */
 isr_pendsv:
     CPSID   I
 
@@ -59,10 +87,25 @@ skip_context_save:
 
     MSR     PSP, R0
 
-    /* 5. Force User Mode (Unprivileged) for the task */
+    /* 5. Determine Privilege: Only force User Mode if flag is NOT set */
+    LDR     R1, =currentTCB
+    LDR     R1, [R1]
+    LDRB    R2, [R1, #35]   /* Offset 35 = flags */
+    TST     R2, #1          /* OS_TASK_FLAG_PRIVILEGED = 0x01 */
+    BNE     skip_user_force
+
+    /* Force User Mode (Unprivileged) for normal tasks */
     MOV     R1, #3
     MSR     CONTROL, R1
     ISB
+    B       done_switch
 
+skip_user_force:
+    /* Ensure Privileged Mode with PSP */
+    MOV     R1, #2
+    MSR     CONTROL, R1
+    ISB
+
+done_switch:
     CPSIE   I
     BX      LR

@@ -8,7 +8,7 @@
 /* We need the global pointer to the current task */
 extern os_tcb_t *currentTCB;
 
-void OS_Delay(uint32_t ticks) {
+void OS_Internal_Delay(uint32_t ticks) {
     if (ticks == 0) return;
 
     OS_ENTER_CRITICAL();

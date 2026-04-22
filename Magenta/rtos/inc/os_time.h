@@ -5,7 +5,7 @@
 
 
 /* Time management */
-void OS_Delay(uint32_t ticks);
+void OS_Internal_Delay(uint32_t ticks);
 void OS_Time_Update(void);
 
 #endif
