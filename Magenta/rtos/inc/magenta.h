@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+#include "os_syscall.h"
 #include "os_kernel.h"
 #include "os_sync.h"
 #include "os_time.h"

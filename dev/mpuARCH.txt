@@ -1,67 +1,70 @@
 ========================================================================
-                      MAGENTARTOS MPU ARCHITECTURE PLAN
+                      MAGENTARTOS MPU ARCHITECTURE REPORT
                    Target: RP2350 (Cortex-M33 / ARMv8-M)
-                       Design: The "Isolated Windows"
+                   Design: The "Isolated Windows" (v2.0)
 ========================================================================
 
-1. LA FILOSOFIA "ISOLATED WINDOWS"
-Abbandoniamo il concetto di "muro" e passiamo a quello di "finestra". 
-- Il Kernel (SUDO) vede tutto grazie alla Background Region (PRIVDEFENA).
-- Il Task (USER) vive nel buio totale. Il Kernel gli apre solo le finestre (Regioni MPU) strettamente necessarie per sopravvivere.
+1. FILOSOFIA DI SICUREZZA "ISOLATED WINDOWS"
+-------------------------------------------
+Il sistema opera con una netta separazione dei privilegi:
+- KERNEL (SUDO): Opera in Background Region (PRIVDEFENA=1). Ha accesso 
+  illimitato a tutta la memoria RAM (TCB, code, variabili globali).
+- TASK (USER): Opera in modalità Unprivileged (User Mode). Vive in un 
+  "buio totale" (Default No-Access) eccetto per le finestre (Regioni MPU) 
+  esplicitamente aperte dal Kernel.
 
-2. STACK OVERFLOW: IL POTERE DI PSPLIM
-Sui Cortex-M33, la MPU non si usa più per intercettare lo stack overflow. Si usa il registro hardware dedicato `PSPLIM` (Process Stack Pointer Limit).
-- Vantaggi: Precisione al byte (non a blocchi di 32 byte come la MPU), zero regioni MPU sprecate, risposta immediata dell'hardware (UsageFault/HardFault).
-- Implementazione: Nel context switch (`isr_pendsv`), subito prima di `MSR PSP, R0`, faremo `MSR PSPLIM, R2` (dove R2 = stack_base).
+2. MAPPA DELLE REGIONI MPU (Rigorosamente NON sovrapposte)
+---------------------------------------------------------
+Sull'architettura ARMv8-M (Cortex-M33), la sovrapposizione delle regioni 
+causa un MemManage Fault immediato. La mappa attuale è:
 
-3. LA MAPPA DELLE FINESTRE (MPU MAP DEFINITIVA)
-Nessuna regione RAM globale. Zero sovrapposizioni.
+| ID | Nome Window | Base Address | Limit Address | User Acc. | XN (Exec) |
+|---|---|---|---|---|---|
+| 0 | FLASH_SEC   | 0x10000000   | 0x11FFFFFF    | RO        | ALLOW     |
+| 1 | SIO_GPIO    | 0xD0000000   | 0xD000FFFF    | RW        | FORBID    |
+| 2 | PERIPHERAL  | 0x40010000   | 0x4003FFFF    | RW        | FORBID    |
+| 3 | FLASH_NS    | 0x00000000   | 0x01FFFFFF    | RO        | ALLOW     |
+| 4 | TASK_STACK  | Dinamico     | Dinamico      | RW        | FORBID    |
 
-| ID | Nome Window | Indirizzo Base | Indirizzo Limite | Attributo | Kernel | User | XN (Esecuzione) |
-|---|---|---|---|---|---|---|---|
-| 0 | FLASH_CODE  | 0x10000000 | 0x10FFFFFF | Normal | RW | RO | ALLOW (Codice) |
-| 1 | SIO_GPIO    | 0xD0000000 | 0xD000FFFF | Device | RW | RW | FORBID |
-| 2 | UART_PRINTF | 0x40034000 | 0x40034FFF | Device | RW | RW | FORBID |
-| 4 | TASK_STACK  | Dinamico (stack_base) | Dinamico (stack_top)| Normal | RW | RW | FORBID |
+Dettagli Tecnici:
+- Region 0/3: Coprono gli alias Secure/Non-Secure della Flash (Cached e Uncached).
+- Region 2: Limitata chirurgicamente a IO_BANK0 e UART0 per impedire ai task 
+  di manipolare Timer, DMA o altri controller hardware critici.
+- Region 4: Riconfigurata ad ogni Context Switch (isr_pendsv).
 
-*Nota: Le regioni 3, 5, 6, 7 sono LIBERE per espansioni future (es. Shared Memory IPC).*
+3. PROTEZIONE STACK CON PSPLIM
+------------------------------
+Il Cortex-M33 offre un registro hardware dedicato allo Stack Overflow:
+- PSPLIM: Viene aggiornato ad ogni context switch con l'indirizzo `stack_base`.
+- Se il puntatore allo stack (PSP) scende sotto questo limite, l'hardware 
+  blocca l'operazione PRIMA della corruzione dati, scatenando un fault.
 
-4. RISOLUZIONE DEI RISCHI PRECEDENTI
-- Lockup all'avvio: Eliminato. Non essendoci una regione globale RAM, non c'è possibilità di sovrapposizione quando definiamo TASK_STACK.
-- Accesso Kernel: Garantito dal bit PRIVDEFENA. Il kernel non ha bisogno di regioni MPU per leggere i TCB o la RAM globale.
-- Protezione Task: Il Task A vede SOLO il suo stack (Region 4). Se prova a leggere una variabile globale C o lo stack del Task B, la MPU non trovando una "finestra" aperta, fa scattare il MemManage Fault.
+4. ARCHITETTURA SYSTEM CALL (SVC)
+---------------------------------
+Per richiedere servizi al Kernel (es. I/O, Delay), i task utilizzano le 
+Supervisor Calls (SVC). Questo permette il passaggio sicuro da User Mode 
+a Privileged Mode.
 
-5. IMPLEMENTAZIONE (STEP-BY-STEP)
-- Step 1 (Assembly): Aggiornare `isr_pendsv` per caricare `PSPLIM` dal TCB (`stack_base`).
-- Step 2 (C - MPU): Riscrivere `OS_MPU_Init` definendo solo Flash, SIO e UART.
-- Step 3 (C - Switch): Riscrivere `OS_MPU_Switch` per aggiornare SOLO la Region 4 (Task Stack).
-- Step 4 (Test): Il task Kamikaze proverà a leggere una variabile globale nella RAM del Kernel. Dovrà generare un fault immediato.
+Meccanismo di Dispatching:
+- Assembly (isr_svcall): Recupera lo Stack Pointer (PSP/MSP). 
+- Inversione Registri: Passa R0=ID e R1=Pointer_Args al dispatcher C.
+- Dispatcher C (OS_Syscall_Handler): Esegue l'azione con privilegi elevati.
+- SafePrintf: Il Kernel gestisce la formattazione delle stringhe per proteggere 
+  le variabili globali della libreria C dall'accesso Unprivileged.
 
-6. ANATOMIA PRATICA DELLA MPU (L'Hardware in Azione)
-Questa sezione documenta come MagentaRTOS comanda fisicamente il Cortex-M33.
+5. GESTIONE DEI PRIVILEGI E IDLE TASK
+-------------------------------------
+- Modalità PRIVILEGED: Riservata al Kernel e all'IDLE TASK. 
+  L'Idle Task deve essere privilegiato per poter eseguire l'istruzione `WFI` 
+  (Wait For Interrupt) senza causare crash di protezione.
+- Modalità UNPRIVILEGED: Tutti i task utente corrono in questa modalità. 
+  Tentativi di disabilitare gli interrupt (CPSID/CPSIE) o modificare la MPU 
+  vengono bloccati dall'hardware.
 
-A. I Registri Chiave (os_mpu.h)
-- MPU_CTRL: L'interruttore generale. Abilita la MPU (Bit 0) e il pass-partout per il Kernel (Bit 2: PRIVDEFENA).
-- MPU_MAIR0 / MAIR1: "Memory Attribute Indirection". Non descrivono *dove* è la memoria, ma *cos'è*. 
-  - Indice 0: 0xFF -> "Normal Memory" (RAM/Flash). Permette alla CPU di usare la cache e ottimizzare le letture.
-  - Indice 1: 0x04 -> "Device Memory". Forza la CPU a eseguire le operazioni esattamente nell'ordine scritto (vitale per i registri hardware come i GPIO).
-- MPU_RNR: Seleziona quale delle 8 regioni (0-7) stiamo per configurare.
-- MPU_RBAR (Base): Indirizzo di partenza + Permessi (RW/RO) + Esecuzione (XN).
-- MPU_RLAR (Limit): Indirizzo di fine + Indice MAIR + Bit di attivazione della singola regione.
-
-B. L'Aritmetica del Recinto (Base e Limit)
-A differenza delle vecchie MPU (v7-M) che usavano "taglie" a potenze di 2 (es. 1024 byte), la MPU v8-M del Pico 2 usa indirizzi esatti, con una sola regola ferrea: devono essere multipli di 32 byte.
-
-La formula matematica per lo Stack Dinamico (Region 4) in OS_MPU_Switch:
-  uint32_t stack_limit = stack_base + (stack_size * 4) - 1;
-
-1. `stack_base`: È l'indirizzo più basso in RAM (es. 0x20001000). Garantito allineato a 32 byte dalla macro OS_TASK_STACK_DEFINE.
-2. `(stack_size * 4)`: Poiché lo stack è un array di uint32_t, moltiplichiamo per 4 per avere la dimensione in byte.
-3. `- 1`: Cruciale. Il registro RLAR include l'indirizzo limite. Se lo stack è di 1024 byte e parte da 0, l'ultimo byte valido è il 1023. Se non sottraessimo 1, regaleremmo al task un byte in più, invadendo potenzialmente la memoria del vicino e causando un Overlap Fault!
-
-C. Il Mascheramento dei Bit (0xFFFFFFE0)
-Nei registri RBAR e RLAR, i 5 bit meno significativi (bit 0-4) sono usati per configurare i permessi e gli attributi.
-L'indirizzo di base e limite viene memorizzato solo nei bit [31:5].
-Ecco perché nel codice C usiamo:
-  MPU_RBAR = (base & 0xFFFFFFE0) | rbar_attr;
-Questo "azzera" gli ultimi 5 bit dell'indirizzo (garantendo l'allineamento a 32) per fare spazio ai bit di configurazione (es. MPU_AP_PRW_URW), fusi insieme tramite l'operatore OR bit a bit (|).
+6. DIAGNOSTICA FAULT (LED ROSSO)
+--------------------------------
+In caso di violazione della sicurezza, il Kernel entra in "Panic Mode":
+- MemManage Fault: 1 Lampeggio LUNGO e LENTO. (Accesso memoria non autorizzato).
+- HardFault: 3 Lampeggi VELOCI. (Errore hardware o corruzione grave).
+Durante il fault, il sistema viene congelato per prevenire escalation di danni.
+========================================================================

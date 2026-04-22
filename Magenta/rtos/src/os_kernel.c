@@ -24,6 +24,7 @@ void OS_Init(void) {
     next_task_id = 0;
 
     OS_TaskCreate(&idleTCB, OS_IdleTask, idle_stack, IDLE_STACK_SIZE, 0);
+    idleTCB.flags = OS_TASK_FLAG_PRIVILEGED;
     OS_MPU_Init();
 }
 
@@ -79,7 +80,8 @@ os_status_t OS_TaskCreate(os_tcb_t *tcb, void (*task_func)(void), os_stack_t *st
     tcb->base_priority = priority;
     tcb->sleep_ticks = 0;
     tcb->owned_mutexes = NULL;
-    tcb->flags = OS_TASK_FLAG_PRIVILEGED;
+    /* Default is User (Unprivileged) for all tasks except Idle */
+    tcb->flags = OS_TASK_FLAG_NONE;
     tcb->reserved = 0;
     
     printf("[KERNEL] Task %lu Created (Prio: %u, Stack: %p)\n", tcb->task_id, tcb->priority, tcb->stack_base);
@@ -101,10 +103,18 @@ void OS_Start(void) {
     OS_Port_EnableFPU();
     OS_Port_InitTick(1);
     
-    OS_ENTER_CRITICAL();
+    /* Ensure PSP is 0 to signal first context switch */
     __asm volatile ("msr psp, %0" : : "r" (0));
-    *((volatile uint32_t *)0xE000ED04) = (1UL << 28); // Trigger PendSV
-    OS_EXIT_CRITICAL();
     
-    while(1);
+    /* Enable interrupts before triggering switch */
+    __asm volatile ("cpsie i");
+    __asm volatile ("isb");
+
+    /* Trigger PendSV to start the first task */
+    *((volatile uint32_t *)0xE000ED04) = (1UL << 28); 
+    
+    /* Wait for the first task to take over */
+    while(1) {
+        __asm volatile ("nop");
+    }
 }

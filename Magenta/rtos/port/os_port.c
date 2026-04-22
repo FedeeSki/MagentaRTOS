@@ -23,14 +23,11 @@ static void panic_blink(int flashes, int speed_ms) {
 /* Handle critical system faults */
 void isr_hardfault(void) {
     OS_ENTER_CRITICAL();
-    /* HardFault: 3 lampeggi veloci */
     panic_blink(3, 10);
 }
 
-/* Handle Memory Protection Unit violations */
 void isr_memmanage(void) {
     OS_ENTER_CRITICAL();
-    /* MemManage: 1 lampeggio lungo */
     panic_blink(1, 50);
 }
 
@@ -68,7 +65,10 @@ os_stack_t* OS_Port_StackInit(void (*task_func)(void), os_stack_t *stack_top) {
 }
 
 void OS_Port_InitTick(uint32_t tick_ms) {
-    *((volatile uint32_t *)0xE000ED20) |= (0xFF << 16); // PendSV priority
+    /* Set PendSV and SysTick to lowest priority (255) */
+    /* SHPR3 (0xE000ED20) bits [23:16] = PendSV, bits [31:24] = SysTick */
+    *((volatile uint32_t *)0xE000ED20) |= (0xFFUL << 16) | (0xFFUL << 24);
+    
     uint32_t cpu_freq = clock_get_hz(clk_sys);
     uint32_t ticks = (cpu_freq / 1000) * tick_ms;
     *((volatile uint32_t *)0xE000E014) = ticks - 1; // RVR

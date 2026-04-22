@@ -1,90 +1,93 @@
 #include "pico/stdlib.h"
 #include "hardware/gpio.h"
 #include "magenta.h"
+#include "os_syscall.h"
 
 #define BLUE_LED 15
 #define RED_LED  14
 
-/* Helper per ritardare l'esecuzione in User Mode senza chiamare funzioni Kernel.
-   In User Mode non possiamo accedere a variabili globali o usare OS_Delay 
-   (che disabilita gli interrupt). Usiamo cicli NOP locali. */
-void user_busy_wait(uint32_t iterations) {
-    for(volatile uint32_t i=0; i<iterations; i++) {
-        __asm volatile("nop");
-    }
-}
-
 /* ------------------------------------------------------------------
- * TASK 1: LED Blink (Testa l'accesso alla Region 2 - SIO)
+ * TASK 1: Heartbeat (Blue)
+ * Indica che lo scheduler è vivo e i task User Mode corrono.
  * ------------------------------------------------------------------ */
-OS_TASK_STACK_DEFINE(Task1_LED, 512);
-OS_TASK_TCB_DEFINE(Task1_LED);
-void Task1_Func(void) {
-    /* Nota: Usiamo solo variabili locali (nello Stack, Region 4). 
-       Nessun printf() perché la libreria C usa variabili globali in RAM! */
+OS_TASK_STACK_DEFINE(Task_Heart, 512);
+OS_TASK_TCB_DEFINE(Task_Heart);
+void Task_Heart_Func(void) {
     while(1) {
         gpio_put(BLUE_LED, 1);
-        user_busy_wait(1000000);
+        OS_Delay(100);
         gpio_put(BLUE_LED, 0);
-        user_busy_wait(1000000);
+        OS_Delay(100);
     }
 }
 
 /* ------------------------------------------------------------------
- * TASK 2: LED Rosso (Testa l'accesso alla Region 2 - SIO con freq diversa)
+ * TASK 2: Logger
+ * Dimostra l'uso sicuro delle System Call.
  * ------------------------------------------------------------------ */
-OS_TASK_STACK_DEFINE(Task2_LED, 512);
-OS_TASK_TCB_DEFINE(Task2_LED);
-void Task2_Func(void) {
+OS_TASK_STACK_DEFINE(Task_Log, 512);
+OS_TASK_TCB_DEFINE(Task_Log);
+void Task_Log_Func(void) {
     while(1) {
-        gpio_put(RED_LED, 1);
-        user_busy_wait(2000000);
-        gpio_put(RED_LED, 0);
-        user_busy_wait(2000000);
+        OS_SafePrintf("[LOG] Sistema operativo MagentaRTOS in esecuzione...\n");
+        OS_Delay(2000);
     }
 }
 
 /* ------------------------------------------------------------------
- * TASK 3: FPU Math (Testa l'accesso alla Region 4 - Task Stack)
+ * TASK 3: Safe Worker
+ * Un task che non fa nulla di pericoloso.
  * ------------------------------------------------------------------ */
-OS_TASK_STACK_DEFINE(Task3_Math, 512);
-OS_TASK_TCB_DEFINE(Task3_Math);
-void Task3_Func(void) {
-    /* Il calcolo float forza il salvataggio dei registri S16-S31 nel Context Switch */
-    volatile float f = 1.0f;
+OS_TASK_STACK_DEFINE(Task_Safe, 512);
+OS_TASK_TCB_DEFINE(Task_Safe);
+void Task_Safe_Func(void) {
+    volatile uint32_t work = 0;
     while(1) {
-        for(int i=0; i<1000; i++) {
-            f = (f * 1.01f) / 0.99f;
-        }
+        work++;
+        OS_Yield();
     }
+}
+
+/* ------------------------------------------------------------------
+ * TASK 4: The Villain (MPU Violator)
+ * Dopo 10 secondi, tenterà di accedere a una periferica NON mappata.
+ * ------------------------------------------------------------------ */
+OS_TASK_STACK_DEFINE(Task_Villain, 512);
+OS_TASK_TCB_DEFINE(Task_Villain);
+void Task_Villain_Func(void) {
+    OS_Delay(10000); 
+    OS_SafePrintf("[VILLAIN] Tentativo di accesso a periferica PROIBITA (Timer)...\n");
+    
+    /* Timer Register a 0x40054000 non è nelle Region MPU 0-4! */
+    volatile uint32_t *prohibited_periph = (uint32_t *)0x40054000;
+    uint32_t val = *prohibited_periph; 
+    
+    OS_SafePrintf("[VILLAIN] Se leggi questo, la MPU ha fallito! Val: %u\n", val);
+    while(1) OS_Yield();
 }
 
 int main() {
     stdio_init_all();
     
-    /* Inizializzazione Hardware Globale sicura (SUDO Mode) */
     gpio_init(BLUE_LED);
     gpio_set_dir(BLUE_LED, GPIO_OUT);
-    gpio_put(BLUE_LED, 0);
     
     gpio_init(RED_LED);
     gpio_set_dir(RED_LED, GPIO_OUT);
-    gpio_put(RED_LED, 0);
 
     sleep_ms(3000);
+    printf("\n--- MagentaRTOS: Security & Multi-Task Test ---\n");
 
     OS_Init();
 
-    /* 
-     * Creiamo i task con la STESSA PRIORITÀ (10).
-     * Dato che i task usano "busy waits" e non cedono mai volontariamente la CPU,
-     * mettendoli alla pari costringiamo lo scheduler a usare il ROUND-ROBIN.
-     * La CPU passerà da uno all'altro ogni 1ms grazie al SysTick (Preemption).
-     */
-    OS_TASK_CREATE_STATIC(Task1_LED,  Task1_Func, 512, 10);
-    OS_TASK_CREATE_STATIC(Task2_LED,  Task2_Func, 512, 10);
-    OS_TASK_CREATE_STATIC(Task3_Math, Task3_Func, 512, 10);
+    /* Creazione Task - Ora i nomi coincidono con le DEFINE sopra */
+    OS_TASK_CREATE_STATIC(Task_Heart,   Task_Heart_Func,   512, 10);
+    OS_TASK_CREATE_STATIC(Task_Log,     Task_Log_Func,     512, 5);
+    OS_TASK_CREATE_STATIC(Task_Safe,    Task_Safe_Func,    512, 1);
+    OS_TASK_CREATE_STATIC(Task_Villain, Task_Villain_Func, 512, 1);
 
+    printf("[Kernel] Avvio Test di Sicurezza...\n");
     OS_Start();
+
     return 0;
 }

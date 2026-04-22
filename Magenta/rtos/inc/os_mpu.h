@@ -28,14 +28,20 @@
 #define MPU_RLAR_ATTR_0     (0UL << 1) /* Index in MAIR0 */
 #define MPU_RLAR_ATTR_1     (1UL << 1)
 #define MPU_RLAR_ENABLE     (1UL << 0)
+/* Region IDs (Matching mpuARCH.txt + NS Alias) */
+#define REG_FLASH_S         0
+#define REG_SIO             1
+#define REG_UART            2
+#define REG_FLASH_NS        3
+#define REG_STACK           4
 
-/* Region IDs */
-#define REG_FLASH           0
-#define REG_RAM             1
-#define REG_SIO             2
-#define REG_UART            3
+/* MPU_RBAR Attributes */
+#define MPU_RBAR_AP_PRW_URW (1UL << 1) /* Priv: RW, User: RW */
+#define MPU_RBAR_AP_PRO_URO (3UL << 1) /* Priv: RO, User: RO */
+#define MPU_RBAR_AP_PRW_UNO (0UL << 1) /* Priv: RW, User: None */
 
 void OS_MPU_Init(void);
-void OS_MPU_Switch(uint32_t base, uint32_t size);
+void OS_MPU_Switch(uint32_t stack_base, uint32_t stack_size);
+
 
 #endif

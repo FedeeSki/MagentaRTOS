@@ -44,12 +44,14 @@ add_executable(Magenta
     # Layer 1: Kernel Base
     rtos/src/os_kernel.c
     rtos/src/os_time.c
-    rtos/src/os_mpu.c
     rtos/port/os_port.c
     rtos/port/os_port_asm.s
 
     # Layer 2: IPC & Sync
     rtos/src/os_sync.c
+    rtos/src/os_syscall.c
+    rtos/src/os_mpu.c
+
 )
 
 # 3. Include Directories
