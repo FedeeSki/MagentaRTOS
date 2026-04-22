@@ -9,9 +9,9 @@ Preemptive Real-Time Operating System (RTOS) engineered for the **Raspberry Pi P
 
 ![Layer 1](https://img.shields.io/badge/Layer_1%3A_Kernel-TESTING-brightgreen?style=for-the-badge)  
 
-![Layer 2](https://img.shields.io/badge/Layer_2%3A_IPC_%26_Synchronization-WORKING-brightgreen?style=for-the-badge)  
+![Layer 2](https://img.shields.io/badge/Layer_2%3A_IPC_%26_Synchronization-TESTING-brightgreen?style=for-the-badge)  
 
-![Layer 3](https://img.shields.io/badge/Layer_3%3A_Protection_%26_Safety-PLANNED-lightgrey?style=for-the-badge)  
+![Layer 3](https://img.shields.io/badge/Layer_3%3A_Protection_%26_Safety-WORKING-lightgrey?style=for-the-badge)  
 
 ![Layer 4](https://img.shields.io/badge/Layer_4%3A_Power_Management_%26_Drivers-PLANNED-lightgrey?style=for-the-badge)  
 
