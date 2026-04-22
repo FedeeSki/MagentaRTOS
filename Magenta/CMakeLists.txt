@@ -18,9 +18,11 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -mcpu=cortex-m33 -mthumb" 
 # 1. Import the Pico setup
 include(pico_sdk_import.cmake)
 
+set(PICO_BOARD pico2_w CACHE STRING "Board type")
+set(PICO_PLATFORM rp2350-arm-s CACHE STRING "Platform type")
+
 # Project definition. ASM is vital for Layer 1 (os_port_asm.s)
 project(Magenta C CXX ASM)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # 2. Initialize the SDK
 pico_sdk_init()

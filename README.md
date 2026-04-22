@@ -98,11 +98,11 @@ To build the project, follow these steps. You can choose which test application 
 2.  **Configure CMake to select the test layer**:
     *   **To build Layer 1 (Kernel Core) test (`main.c`):**
         ```bash
-        cmake -DBUILD_TEST_TYPE=L1 ..
+        cmake -DTEST=L1 -S ../Magenta -B .
         ```
     *   **To build Layer 2 (IPC & Synchronization) test (`test_sync.c`):**
         ```bash
-        cmake -DBUILD_TEST_TYPE=L2 ..
+        cmake -DTEST=L2 -S ../Magenta -B ..
         ```
     (By default, `L1` is selected if `BUILD_TEST_TYPE` is not specified.)
 
@@ -130,12 +130,19 @@ Per monitorare l'output seriale del Pico dal terminale, puoi usare `picocom`.
     ```bash
     brew install picocom
     ```
-
+    
 2.  **Connessione alla Porta Seriale del Pico:**
     Una volta installato, puoi connetterti alla porta seriale del tuo Pico specificando la porta e il baud rate (generalmente 115200 per il Pico):
 
     ```bash
-    picocom -b 115200 /dev/cu.usbmodem101
+
+    # Load .uf2 (uguale sia per macOS che per linux)
+
+    picotool load magenta.uf2 -x 
+
+    picocom -b 115200 /dev/cu.usbmodem101 #macOS
+
+    picocom -b 115200 /dev/ttyACM0 #GNU/linux
     ```
     Sostituisci `/dev/cu.usbmodem101` con la porta corretta, se fosse diversa (puoi trovarla con `ls /dev/cu.*`).
 
@@ -143,4 +150,4 @@ Per monitorare l'output seriale del Pico dal terminale, puoi usare `picocom`.
     *   **Uscire**: Per uscire da `picocom`, premi `Ctrl+A` seguito da `Ctrl+Q`.
     *   **Menu Aiuto**: Per vedere i comandi disponibili, premi `Ctrl+A` seguito da `Ctrl+H`.
 
-`picocom` ti darà un'esperienza affidabile per il monitoraggio seriale.
+
